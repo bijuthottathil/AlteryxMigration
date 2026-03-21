@@ -1,0 +1,20 @@
+<AlteryxDocument>
+  <Nodes>
+    <Node ToolID="1">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.InputData"/>
+      <Properties><Configuration><File>input.csv</File></Configuration></Properties>
+    </Node>
+    <Node ToolID="2">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Filter"/>
+      <Properties><Configuration><Expression>[age] > 30</Expression></Configuration></Properties>
+    </Node>
+    <Node ToolID="3">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.OutputData"/>
+      <Properties><Configuration><File>output.yxdb</File></Configuration></Properties>
+    </Node>
+  </Nodes>
+  <Connections>
+    <Connection Source="1" Destination="2"/>
+    <Connection Source="2" Destination="3"/>
+  </Connections>
+</AlteryxDocument>

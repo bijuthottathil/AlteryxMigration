@@ -1,0 +1,8 @@
+<AlteryxDocument>
+  <Nodes>
+    <Node ToolID="1">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula"/>
+      <Properties><Configuration><Expression>[amount] * 0.9</Expression></Configuration></Properties>
+    </Node>
+  </Nodes>
+</AlteryxDocument>

@@ -1,0 +1,24 @@
+<AlteryxDocument>
+  <Nodes>
+    <Node ToolID="1"><GuiSettings Plugin="AlteryxBasePluginsGui.InputData"/>
+      <Properties><Configuration><File>customers.csv</File></Configuration></Properties></Node>
+    <Node ToolID="2"><GuiSettings Plugin="AlteryxBasePluginsGui.InputData"/>
+      <Properties><Configuration><File>orders.csv</File></Configuration></Properties></Node>
+    <Node ToolID="3"><GuiSettings Plugin="AlteryxBasePluginsGui.InputData"/>
+      <Properties><Configuration><File>products.csv</File></Configuration></Properties></Node>
+    <Node ToolID="4"><GuiSettings Plugin="AlteryxBasePluginsGui.Join"/></Node>
+    <Node ToolID="5"><GuiSettings Plugin="AlteryxBasePluginsGui.Join"/></Node>
+    <Node ToolID="6"><GuiSettings Plugin="AlteryxBasePluginsGui.Formula"/>
+      <Properties><Configuration><Expression>[amount] * 0.9</Expression><Field>discounted_amount</Field></Configuration></Properties></Node>
+    <Node ToolID="7"><GuiSettings Plugin="AlteryxBasePluginsGui.Summarize"/>
+      <Properties><Configuration><GroupBy>country</GroupBy><Sum>discounted_amount</Sum></Configuration></Properties></Node>
+  </Nodes>
+  <Connections>
+    <Connection Source="1" Destination="4"/>
+    <Connection Source="2" Destination="4"/>
+    <Connection Source="4" Destination="5"/>
+    <Connection Source="3" Destination="5"/>
+    <Connection Source="5" Destination="6"/>
+    <Connection Source="6" Destination="7"/>
+  </Connections>
+</AlteryxDocument>
