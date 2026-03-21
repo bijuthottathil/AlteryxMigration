@@ -677,6 +677,148 @@ customers.csv ──────────────┤─ Join 1 (CustomerI
 
 ---
 
+## Macro Transformation Logic
+
+All Alteryx macros (`.yxmc`) have been inlined directly into PySpark notebooks. No separate macro files are needed in Databricks. This section documents every macro, its original logic, where it is embedded, and the exact PySpark implementation.
+
+---
+
+### Macro 1: `macro_calculate_discount.yxmc`
+
+**Source workflow:** `complex_workflow.yxmd`
+**Embedded in:** `complex_workflow.py` — Step 4 (Formula cell)
+**Purpose:** Apply a flat 10% discount to every transaction's `amount` field.
+
+#### Original Alteryx Formula Tool Expression
+```
+[amount] * 0.9
+```
+
+#### PySpark Implementation
+```python
+# complex_workflow.py — Step 4
+df_discounted = add_column(df_joined, "discounted_amount", "amount * 0.9")
+```
+Calls `transform.py → add_column()`, which uses `F.expr()` under the hood:
+```python
+df.withColumn("discounted_amount", F.expr("amount * 0.9"))
+```
+
+#### Input / Output Fields
+
+| Field | Direction | Type | Description |
+|---|---|---|---|
+| `amount` | Input | double | Order amount (cast before use via `cast_cols`) |
+| `discounted_amount` | Output | double | `amount * 0.9` — 10% discount applied |
+
+#### Column Cast Required
+Because `amount` is read from CSV and may be inferred as string, a `cast_cols` call precedes the formula:
+```python
+df_joined = cast_cols(df_joined, {"amount": "double"})
+df_discounted = add_column(df_joined, "discounted_amount", "amount * 0.9")
+```
+
+---
+
+### Macro 2: `CommissionCalculator.yxmc`
+
+**Source workflow:** `Enterprise_Sales_Commission_Pipeline.yxmd` (Tool 40–41)
+**Embedded in:** `enterprise_02_star_schema_enrichment.py` — Layer 5 cell
+**Purpose:** Calculate tiered sales commission with a return penalty clawback, producing `FinalCommission` and `CommissionBand` for every transaction.
+
+#### Original Alteryx Macro Inputs
+| Field | Type | Description |
+|---|---|---|
+| `NetRevenue` | Double | Net transaction revenue after discount |
+| `CommissionRate` | Double | Rep's base commission rate (e.g. 0.08) |
+| `ReturnFlag` | String | `Y` = returned order, `N` = valid sale |
+| `DealTier` | String | Platinum / Gold / Silver / Bronze |
+
+#### Original Alteryx Formula Expressions (verbatim)
+
+```
+# TierMultiplier
+IIF([DealTier]='Platinum', 1.50,
+  IIF([DealTier]='Gold', 1.25,
+    IIF([DealTier]='Silver', 1.00, 0.75)))
+
+# ReturnMultiplier — 50% clawback on returned orders
+IIF([ReturnFlag]='Y', 0.50, 1.00)
+
+# BaseCommission
+[NetRevenue] * [CommissionRate]
+
+# FinalCommission
+ROUND([BaseCommission] * [TierMultiplier] * [ReturnMultiplier], 2)
+
+# CommissionBand
+IIF([FinalCommission] >= 500, 'High Commission',
+  IIF([FinalCommission] >= 200, 'Mid Commission', 'Standard Commission'))
+```
+
+#### PySpark Implementation
+```python
+# enterprise_02_star_schema_enrichment.py — Layer 5
+df_enriched = (
+    df_kpi
+    .withColumn("TierMultiplier",
+        F.when(F.col("DealTier") == "Platinum", 1.50)
+         .when(F.col("DealTier") == "Gold",     1.25)
+         .when(F.col("DealTier") == "Silver",   1.00)
+         .otherwise(0.75))
+    .withColumn("ReturnMultiplier", F.lit(1.0))   # all records here are valid sales (ReturnFlag=N)
+    .withColumn("BaseCommission",
+        F.round(F.col("NetRevenue") * F.col("CommissionRate"), 2))
+    .withColumn("FinalCommission",
+        F.round(F.col("BaseCommission") * F.col("TierMultiplier") * F.col("ReturnMultiplier"), 2))
+    .withColumn("CommissionBand",
+        F.when(F.col("FinalCommission") >= 500, "High Commission")
+         .when(F.col("FinalCommission") >= 200, "Mid Commission")
+         .otherwise("Standard Commission"))
+)
+```
+
+> **Note on ReturnMultiplier:** In the original macro, `ReturnFlag=Y` triggers a 0.5× clawback. In the Databricks pipeline, returned transactions are split off in notebook 01 (`staging_returned_orders`) before this logic runs, so all records reaching notebook 02 are valid sales and `ReturnMultiplier` is always `1.0`. The clawback logic is preserved as a constant rather than removed, so it can be re-activated if returns are ever processed through the enrichment pipeline.
+
+#### Tier Multiplier Reference
+
+| DealTier | NetRevenue Threshold | TierMultiplier | Effect |
+|---|---|---|---|
+| Platinum | ≥ $2,000 | 1.50× | 50% bonus on commission |
+| Gold | ≥ $800 | 1.25× | 25% bonus on commission |
+| Silver | ≥ $300 | 1.00× | Standard commission |
+| Bronze | < $300 | 0.75× | 25% reduction on commission |
+
+#### Commission Band Reference
+
+| CommissionBand | FinalCommission Threshold |
+|---|---|
+| High Commission | ≥ $500 |
+| Mid Commission | ≥ $200 |
+| Standard Commission | < $200 |
+
+#### Output Fields Written to `enriched_transactions`
+
+| Field | Type | Description |
+|---|---|---|
+| `TierMultiplier` | double | Multiplier based on DealTier |
+| `ReturnMultiplier` | double | Always 1.0 in current pipeline |
+| `BaseCommission` | double | `NetRevenue × CommissionRate` |
+| `FinalCommission` | double | `BaseCommission × TierMultiplier × ReturnMultiplier` |
+| `CommissionBand` | string | High / Mid / Standard Commission |
+
+#### Downstream Usage of `FinalCommission`
+
+`FinalCommission` is computed once in notebook 02 and consumed by three downstream notebooks:
+
+| Notebook | Usage |
+|---|---|
+| `enterprise_03_customer_kpi_report.py` | `SUM(FinalCommission)` → `TotalCommission` per customer |
+| `enterprise_05_rep_commission_report.py` | `SUM(FinalCommission)` → `TotalCommission` per rep |
+| `enterprise_06_regional_dashboard.py` | `SUM(FinalCommission)` → `TotalCommission` per region/quarter |
+
+---
+
 ## Alteryx → PySpark Tool Mapping Reference
 
 | Alteryx Tool | transform.py function | Notes |
