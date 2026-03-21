@@ -1,0 +1,11 @@
+ProductID,ProductName,Category,SubCategory,Brand,CostPrice,MSRP,LaunchDate,IsActive,WarrantyMonths,MinStock,MaxStock
+PROD-A01,ProWidget X100,Hardware,Peripherals,TechBrand,180.00,299.99,2022-01-15,Y,12,50,500
+PROD-B02,DataSync Lite,Software,Productivity,SoftCo,45.00,149.50,2021-06-01,Y,0,0,9999
+PROD-C03,FastConnector Hub,Hardware,Networking,NetBrand,38.00,89.00,2023-03-10,Y,24,100,1000
+PROD-D04,CloudVault Pro,Software,Security,SecureSoft,200.00,599.00,2020-09-20,Y,0,0,9999
+PROD-E05,Enterprise Suite,Software,ERP,MegaSoft,600.00,1200.00,2019-01-05,Y,0,0,9999
+PROD-F06,UltraServer 2000,Hardware,Servers,ServerBrand,1200.00,2500.00,2021-11-30,Y,36,10,100
+PROD-G07,SmartSensor Pack,Hardware,IoT,IoTBrand,180.00,450.00,2022-07-14,Y,18,25,250
+PROD-H08,DataCenter Node,Hardware,Infrastructure,InfraBrand,1500.00,3200.00,2020-04-22,Y,48,5,50
+PROD-I09,AnalyticsPro 360,Software,Analytics,AnaBrand,350.00,780.00,2023-08-01,Y,0,0,9999
+PROD-J10,AI Compute Module,Hardware,AI,AIBrand,900.00,1850.00,2023-10-15,Y,24,5,75

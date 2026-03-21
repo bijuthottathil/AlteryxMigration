@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AlteryxDocument yxmdVer="2024.1">
+  <Nodes>
+    <!-- Macro Input: expects NetRevenue, CommissionRate, ReturnFlag -->
+    <Node ToolID="1">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.MacroInput.MacroInput">
+        <Position x="54" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Name>Input</Name>
+          <Abbrev>In</Abbrev>
+          <ShowFieldMap>True</ShowFieldMap>
+          <Fields>
+            <Field name="NetRevenue"      type="Double" size="8"/>
+            <Field name="CommissionRate"  type="Double" size="8"/>
+            <Field name="ReturnFlag"      type="String" size="1"/>
+            <Field name="DealTier"        type="String" size="20"/>
+          </Fields>
+        </Configuration>
+      </Properties>
+    </Node>
+
+    <!-- Formula: Calculate commission with tier multiplier and return penalty -->
+    <Node ToolID="2">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="198" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <FormulaFields>
+            <!-- Tier multiplier: Platinum=1.5x, Gold=1.25x, Silver=1.0x, Bronze=0.75x -->
+            <FormulaField expression="IIF([DealTier]='Platinum', 1.50,&#xA;  IIF([DealTier]='Gold', 1.25,&#xA;    IIF([DealTier]='Silver', 1.00, 0.75)))" field="TierMultiplier" size="8" type="Double"/>
+            <!-- Return penalty: Y = 50% commission clawback -->
+            <FormulaField expression="IIF([ReturnFlag]='Y', 0.50, 1.00)" field="ReturnMultiplier" size="8" type="Double"/>
+            <!-- Base commission -->
+            <FormulaField expression="[NetRevenue] * [CommissionRate]" field="BaseCommission" size="8" type="Double"/>
+            <!-- Final commission -->
+            <FormulaField expression="ROUND([BaseCommission] * [TierMultiplier] * [ReturnMultiplier], 2)" field="FinalCommission" size="8" type="Double"/>
+            <!-- Commission band label -->
+            <FormulaField expression="IIF([FinalCommission] >= 500, 'High Commission',&#xA;  IIF([FinalCommission] >= 200, 'Mid Commission', 'Standard Commission'))" field="CommissionBand" size="30" type="String"/>
+          </FormulaFields>
+        </Configuration>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxFormula"/>
+    </Node>
+
+    <!-- Macro Output -->
+    <Node ToolID="3">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.MacroOutput.MacroOutput">
+        <Position x="360" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Name>Output</Name>
+          <Abbrev>Out</Abbrev>
+        </Configuration>
+      </Properties>
+    </Node>
+  </Nodes>
+
+  <Connections>
+    <Connection>
+      <Origin ToolID="1" Connection="Output"/>
+      <Destination ToolID="2" Connection="Input"/>
+    </Connection>
+    <Connection>
+      <Origin ToolID="2" Connection="Output"/>
+      <Destination ToolID="3" Connection="Input"/>
+    </Connection>
+  </Connections>
+
+  <Properties>
+    <MetaInfo>
+      <Name>Commission Calculator Macro</Name>
+      <Description>Calculates tiered commission with return penalty. Input: NetRevenue, CommissionRate, ReturnFlag, DealTier. Output: FinalCommission, CommissionBand.</Description>
+      <Author>Sales Analytics Team</Author>
+      <Version>2.0</Version>
+    </MetaInfo>
+  </Properties>
+</AlteryxDocument>

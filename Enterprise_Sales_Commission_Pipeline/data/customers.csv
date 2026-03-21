@@ -1,0 +1,21 @@
+CustomerID,CustomerName,Email,Phone,Segment,Region,Country,State,City,AccountOpenDate,CreditLimit,PreferredPayment,IsActive
+CUST-101,Pinnacle Corp,contact@pinnacle.com,555-0101,Enterprise,North,USA,NY,New York,2020-03-15,50000,Wire Transfer,Y
+CUST-102,Bluewave LLC,info@bluewave.com,555-0102,SMB,South,USA,TX,Houston,2021-06-22,15000,PayPal,Y
+CUST-103,Nexus Dynamics,hello@nexusdyn.com,555-0103,Enterprise,East,USA,FL,Miami,2019-11-10,75000,Credit Card,Y
+CUST-104,Orbit Systems,sales@orbit.com,555-0104,Mid-Market,West,USA,CA,Los Angeles,2022-01-08,30000,Credit Card,Y
+CUST-105,Crestline Group,ops@crestline.com,555-0105,SMB,South,USA,GA,Atlanta,2020-09-14,12000,Credit Card,Y
+CUST-106,Apex Solutions,contact@apex.com,555-0106,Enterprise,North,USA,IL,Chicago,2018-07-30,100000,Wire Transfer,Y
+CUST-107,Vortex Industries,info@vortex.com,555-0107,Enterprise,West,USA,WA,Seattle,2017-04-05,120000,Wire Transfer,Y
+CUST-108,Skyline Partners,team@skyline.com,555-0108,Mid-Market,East,USA,MA,Boston,2021-12-19,25000,PayPal,Y
+CUST-109,Crimson Tech,hello@crimson.com,555-0109,SMB,South,USA,NC,Charlotte,2023-02-28,8000,Credit Card,Y
+CUST-110,Zenith Corp,sales@zenith.com,555-0110,Enterprise,North,USA,OH,Columbus,2020-05-17,60000,Wire Transfer,Y
+CUST-111,Pulse Digital,info@pulsedigital.com,555-0111,Mid-Market,West,USA,CO,Denver,2022-08-03,20000,Credit Card,Y
+CUST-112,Sterling Group,ops@sterling.com,555-0112,Enterprise,East,USA,PA,Philadelphia,2019-03-25,80000,Wire Transfer,Y
+CUST-113,Aurora Ventures,contact@aurora.com,555-0113,SMB,South,USA,TN,Nashville,2021-10-11,10000,PayPal,Y
+CUST-114,Titan Logistics,team@titan.com,555-0114,Mid-Market,North,USA,MI,Detroit,2020-07-07,35000,Credit Card,Y
+CUST-115,Cascade Tech,hello@cascade.com,555-0115,Enterprise,West,USA,OR,Portland,2018-12-01,90000,Wire Transfer,Y
+CUST-116,Ember Analytics,sales@ember.com,555-0116,SMB,East,USA,VA,Richmond,2023-04-15,7500,Credit Card,Y
+CUST-117,Solaris Inc,info@solaris.com,555-0117,Mid-Market,South,USA,AZ,Phoenix,2022-03-22,28000,PayPal,Y
+CUST-118,Ironclad Data,ops@ironclad.com,555-0118,Enterprise,North,USA,MN,Minneapolis,2016-09-09,110000,Wire Transfer,Y
+CUST-119,Luminary Co,contact@luminary.com,555-0119,SMB,West,USA,NV,Las Vegas,2023-01-30,9000,Credit Card,Y
+CUST-120,Quantum Edge,team@quantum.com,555-0120,Mid-Market,East,USA,MD,Baltimore,2021-05-18,22000,PayPal,Y

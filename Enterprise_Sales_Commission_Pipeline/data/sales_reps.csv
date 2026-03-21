@@ -1,0 +1,6 @@
+SalesRepID,RepName,Email,Region,Territory,HireDate,BaseSalary,CommissionRate,Manager,IsActive,YTDQuota
+REP-01,Alice Morgan,a.morgan@company.com,North,Northeast,2019-03-10,75000,0.08,MGR-01,Y,500000
+REP-02,Bob Chen,b.chen@company.com,South,Southeast,2020-07-15,68000,0.07,MGR-02,Y,420000
+REP-03,Carol Davis,c.davis@company.com,East,Mid-Atlantic,2018-11-01,72000,0.08,MGR-01,Y,480000
+REP-04,David Kim,d.kim@company.com,West,Pacific,2021-02-22,65000,0.07,MGR-03,Y,380000
+REP-05,Eva Patel,e.patel@company.com,North,Midwest,2017-06-05,80000,0.09,MGR-02,Y,550000

@@ -1,0 +1,52 @@
+{
+  "package": "Enterprise_Sales_Commission_Pipeline",
+  "version": "3.0",
+  "alteryxVersion": "2024.1",
+  "description": "Complex sales commission pipeline: 5 inputs, 4 joins, macro, 4-stream agg, 5 outputs",
+  "workflow": "Enterprise_Sales_Commission_Pipeline.yxmd",
+  "macro": "macros/CommissionCalculator.yxmc",
+  "inputs": [
+    {
+      "file": "data/sales_transactions.csv",
+      "rows": 60,
+      "description": "Raw transaction records Jan-Jun 2024"
+    },
+    {
+      "file": "data/customers.csv",
+      "rows": 20,
+      "description": "Customer master dimension"
+    },
+    {
+      "file": "data/products.csv",
+      "rows": 10,
+      "description": "Product catalogue dimension"
+    },
+    {
+      "file": "data/sales_reps.csv",
+      "rows": 5,
+      "description": "Sales rep master with commission rates"
+    },
+    {
+      "file": "data/regional_targets.csv",
+      "rows": 8,
+      "description": "Q1+Q2 2024 regional revenue targets"
+    }
+  ],
+  "outputs": [
+    "output/customer_kpi_report.csv",
+    "output/product_performance.csv",
+    "output/rep_commission_report.csv",
+    "output/regional_dashboard.csv",
+    "output/returned_orders_flagged.csv"
+  ],
+  "toolCount": 27,
+  "layers": [
+    "Input",
+    "DataQuality",
+    "Join",
+    "FormulaEnrichment",
+    "Macro",
+    "Aggregation",
+    "Output"
+  ]
+}

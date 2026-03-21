@@ -1,0 +1,879 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AlteryxDocument yxmdVer="2024.1">
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       WORKFLOW: Enterprise Sales & Commission Pipeline
+       Author  : Sales Analytics Team
+       Version : 3.0   |   Last Updated: 2024-06-30
+       
+       FLOW SUMMARY
+       ════════════
+       [1] INPUT LAYER
+           ├─ sales_transactions.csv  → 60 transaction rows
+           ├─ customers.csv           → 20 customer records
+           ├─ products.csv            → 10 product records
+           ├─ sales_reps.csv          → 5 rep records
+           └─ regional_targets.csv    → 8 target rows
+
+       [2] DATA QUALITY & STANDARDISATION
+           ├─ Filter: remove returned transactions  (T/F split)
+           ├─ Formula: parse Quarter from TransactionDate
+           └─ Select: drop raw columns no longer needed
+
+       [3] JOIN LAYER  (star-schema enrichment)
+           ├─ Join 1: Transactions ← Customers  (CustomerID)
+           ├─ Join 2: +Products               (ProductID)
+           ├─ Join 3: +Sales Reps             (SalesRepID)
+           └─ Join 4: +Regional Targets       (Region + Quarter)
+
+       [4] FORMULA ENRICHMENT
+           ├─ NetRevenue  = Qty × UnitPrice × (1 − Discount)
+           ├─ Margin      = (NetRevenue − CostPrice×Qty) / NetRevenue
+           ├─ DealTier    = Platinum / Gold / Silver / Bronze
+           ├─ DaysToClose = DATEDIFF from AccountOpenDate
+           └─ vs_Target   = NetRevenue / (RevenueTarget / 90)
+
+       [5] MACRO: CommissionCalculator.yxmc
+           └─ FinalCommission, CommissionBand per transaction
+
+       [6] AGGREGATION LAYER
+           ├─ Summarize A: Customer-level KPIs
+           ├─ Summarize B: Product-level KPIs
+           ├─ Summarize C: Rep-level performance
+           └─ Summarize D: Region × Quarter dashboard
+
+       [7] OUTPUT LAYER
+           ├─ Output 1: customer_kpi_report.csv
+           ├─ Output 2: product_performance.csv
+           ├─ Output 3: rep_commission_report.csv
+           └─ Output 4: regional_dashboard.csv
+       ═══════════════════════════════════════════════════════════════════ -->
+
+  <Nodes>
+
+    <!-- ╔══════════════════════════════════╗ -->
+    <!-- ║       LAYER 1: INPUTS           ║ -->
+    <!-- ╚══════════════════════════════════╝ -->
+
+    <!-- Tool 1: Input – Sales Transactions -->
+    <Node ToolID="1">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="54" y="54"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Passwords/>
+          <File RecordLimit="" SearchSubDirs="False" FileFormat="0">.\data\sales_transactions.csv</File>
+          <FormatSpecificOptions>
+            <FirstRowData>False</FirstRowData>
+            <IgnoreErrors>False</IgnoreErrors>
+            <AllowShareWrite>False</AllowShareWrite>
+            <HeaderRow>True</HeaderRow>
+            <IgnoreQuotes>False</IgnoreQuotes>
+            <Delimeter>,</Delimeter>
+            <CodePage>28591</CodePage>
+            <MaxFieldLen>254</MaxFieldLen>
+            <Optimize>True</Optimize>
+            <FullPath>True</FullPath>
+            <SignedData>False</SignedData>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Sales Transactions (60 rows)</Name>
+          <DefaultAnnotationText>60 raw transaction records Jan–Jun 2024&#xA;Includes returns, discounts, payment methods</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxDbFileInput"/>
+    </Node>
+
+    <!-- Tool 2: Input – Customers -->
+    <Node ToolID="2">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="54" y="162"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File RecordLimit="" SearchSubDirs="False" FileFormat="0">.\data\customers.csv</File>
+          <FormatSpecificOptions>
+            <HeaderRow>True</HeaderRow>
+            <Delimeter>,</Delimeter>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Customers Dimension (20 rows)</Name>
+          <DefaultAnnotationText>Customer master: segment, region, credit limit</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxDbFileInput"/>
+    </Node>
+
+    <!-- Tool 3: Input – Products -->
+    <Node ToolID="3">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="54" y="270"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File RecordLimit="" SearchSubDirs="False" FileFormat="0">.\data\products.csv</File>
+          <FormatSpecificOptions>
+            <HeaderRow>True</HeaderRow>
+            <Delimeter>,</Delimeter>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Products Dimension (10 rows)</Name>
+          <DefaultAnnotationText>Product master: cost, MSRP, category, warranty</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxDbFileInput"/>
+    </Node>
+
+    <!-- Tool 4: Input – Sales Reps -->
+    <Node ToolID="4">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="54" y="378"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File RecordLimit="" SearchSubDirs="False" FileFormat="0">.\data\sales_reps.csv</File>
+          <FormatSpecificOptions>
+            <HeaderRow>True</HeaderRow>
+            <Delimeter>,</Delimeter>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Sales Reps (5 rows)</Name>
+          <DefaultAnnotationText>Rep master: commission rate, quota, territory</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxDbFileInput"/>
+    </Node>
+
+    <!-- Tool 5: Input – Regional Targets -->
+    <Node ToolID="5">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="54" y="486"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File RecordLimit="" SearchSubDirs="False" FileFormat="0">.\data\regional_targets.csv</File>
+          <FormatSpecificOptions>
+            <HeaderRow>True</HeaderRow>
+            <Delimeter>,</Delimeter>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Regional Targets (8 rows)</Name>
+          <DefaultAnnotationText>Q1+Q2 2024 targets by region</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxDbFileInput"/>
+    </Node>
+
+
+    <!-- ╔══════════════════════════════════════╗ -->
+    <!-- ║    LAYER 2: DATA QUALITY            ║ -->
+    <!-- ╚══════════════════════════════════════╝ -->
+
+    <!-- Tool 10: Filter – Split returns vs valid transactions -->
+    <Node ToolID="10">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Filter.Filter">
+        <Position x="216" y="54"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Expression>[ReturnFlag] = 'N'</Expression>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Filter: Exclude Returns</Name>
+          <DefaultAnnotationText>TRUE  → Valid sales (ReturnFlag = N)&#xA;FALSE → Returned orders (ReturnFlag = Y) → returned_orders.csv</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxFilter"/>
+    </Node>
+
+    <!-- Tool 11: Formula – Date parsing and quarter derivation -->
+    <Node ToolID="11">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="378" y="54"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <FormulaFields>
+            <!-- Parse TransactionDate to proper Date -->
+            <FormulaField expression="DateTimeParse([TransactionDate], '%Y-%m-%d')" field="TxnDate" size="8" type="Date"/>
+            <!-- Quarter string: Q1/Q2/Q3/Q4 -->
+            <FormulaField expression="'Q' + ToString(IIF(Month([TxnDate])&lt;=3,1,IIF(Month([TxnDate])&lt;=6,2,IIF(Month([TxnDate])&lt;=9,3,4))))" field="Quarter" size="2" type="String"/>
+            <!-- Year -->
+            <FormulaField expression="ToString(Year([TxnDate]))" field="TxnYear" size="4" type="String"/>
+            <!-- Month name -->
+            <FormulaField expression="DateTimeFormat([TxnDate], '%B')" field="MonthName" size="15" type="String"/>
+            <!-- Gross Revenue -->
+            <FormulaField expression="[Quantity] * [UnitPrice]" field="GrossRevenue" size="8" type="Double"/>
+            <!-- Net Revenue after discount -->
+            <FormulaField expression="ROUND([GrossRevenue] * (1 - [Discount]), 2)" field="NetRevenue" size="8" type="Double"/>
+            <!-- Discount Amount -->
+            <FormulaField expression="ROUND([GrossRevenue] - [NetRevenue], 2)" field="DiscountAmount" size="8" type="Double"/>
+          </FormulaFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Formula: Date + Revenue Fields</Name>
+          <DefaultAnnotationText>Derives: Quarter, MonthName, GrossRevenue, NetRevenue, DiscountAmount</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxFormula"/>
+    </Node>
+
+    <!-- Tool 12: Select – Clean up raw columns -->
+    <Node ToolID="12">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="540" y="54"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <OrderChanged>False</OrderChanged>
+          <Fields>
+            <Field name="TransactionID"   selected="True"  rename="TransactionID"/>
+            <Field name="OrderID"         selected="True"  rename="OrderID"/>
+            <Field name="CustomerID"      selected="True"  rename="CustomerID"/>
+            <Field name="ProductID"       selected="True"  rename="ProductID"/>
+            <Field name="SalesRepID"      selected="True"  rename="SalesRepID"/>
+            <Field name="TransactionDate" selected="False"/>
+            <Field name="TxnDate"         selected="True"  rename="TransactionDate"/>
+            <Field name="Quarter"         selected="True"  rename="Quarter"/>
+            <Field name="TxnYear"         selected="True"  rename="Year"/>
+            <Field name="MonthName"       selected="True"  rename="Month"/>
+            <Field name="Quantity"        selected="True"  rename="Quantity"/>
+            <Field name="UnitPrice"       selected="True"  rename="UnitPrice"/>
+            <Field name="Discount"        selected="True"  rename="DiscountRate"/>
+            <Field name="DiscountAmount"  selected="True"  rename="DiscountAmount"/>
+            <Field name="GrossRevenue"    selected="True"  rename="GrossRevenue"/>
+            <Field name="NetRevenue"      selected="True"  rename="NetRevenue"/>
+            <Field name="PaymentMethod"   selected="True"  rename="PaymentMethod"/>
+            <Field name="ReturnFlag"      selected="False"/>
+          </Fields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Select: Standardise Columns</Name>
+          <DefaultAnnotationText>Drop raw date, ReturnFlag&#xA;Rename derived fields to clean names</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxSelect"/>
+    </Node>
+
+
+    <!-- ╔══════════════════════════════════════╗ -->
+    <!-- ║    LAYER 3: JOIN (STAR SCHEMA)      ║ -->
+    <!-- ╚══════════════════════════════════════╝ -->
+
+    <!-- Tool 20: Join 1 – Transactions ← Customers -->
+    <Node ToolID="20">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Join.Join">
+        <Position x="702" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <JoinInfo side="Left">
+            <Field field="CustomerID"/>
+          </JoinInfo>
+          <JoinInfo side="Right">
+            <Field field="CustomerID"/>
+          </JoinInfo>
+          <SelectConfiguration>
+            <SelectFields>
+              <SelectField field="Left_CustomerID"  selected="True"  rename="CustomerID"/>
+              <SelectField field="Left_*"           selected="True"/>
+              <SelectField field="Right_CustomerID" selected="False"/>
+              <SelectField field="CustomerName"     selected="True"/>
+              <SelectField field="Segment"          selected="True"/>
+              <SelectField field="Region"           selected="True"/>
+              <SelectField field="Country"          selected="True"/>
+              <SelectField field="State"            selected="True"/>
+              <SelectField field="City"             selected="True"/>
+              <SelectField field="CreditLimit"      selected="True"/>
+              <SelectField field="AccountOpenDate"  selected="True"/>
+              <SelectField field="Email"            selected="False"/>
+              <SelectField field="Phone"            selected="False"/>
+              <SelectField field="PreferredPayment" selected="True"/>
+              <SelectField field="IsActive"         selected="False"/>
+            </SelectFields>
+          </SelectConfiguration>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Join 1: + Customer Dimension</Name>
+          <DefaultAnnotationText>LEFT JOIN on CustomerID&#xA;Adds: CustomerName, Segment, Region, CreditLimit</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxJoin"/>
+    </Node>
+
+    <!-- Tool 21: Join 2 – +Products -->
+    <Node ToolID="21">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Join.Join">
+        <Position x="864" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <JoinInfo side="Left"><Field field="ProductID"/></JoinInfo>
+          <JoinInfo side="Right"><Field field="ProductID"/></JoinInfo>
+          <SelectConfiguration>
+            <SelectFields>
+              <SelectField field="Left_*"          selected="True"/>
+              <SelectField field="Right_ProductID" selected="False"/>
+              <SelectField field="ProductName"     selected="True"/>
+              <SelectField field="Category"        selected="True"/>
+              <SelectField field="SubCategory"     selected="True"/>
+              <SelectField field="Brand"           selected="True"/>
+              <SelectField field="CostPrice"       selected="True"/>
+              <SelectField field="MSRP"            selected="True"/>
+              <SelectField field="WarrantyMonths"  selected="True"/>
+              <SelectField field="LaunchDate"      selected="False"/>
+              <SelectField field="IsActive"        selected="False"/>
+              <SelectField field="MinStock"        selected="False"/>
+              <SelectField field="MaxStock"        selected="False"/>
+            </SelectFields>
+          </SelectConfiguration>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Join 2: + Product Dimension</Name>
+          <DefaultAnnotationText>LEFT JOIN on ProductID&#xA;Adds: ProductName, Category, CostPrice, MSRP</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxJoin"/>
+    </Node>
+
+    <!-- Tool 22: Join 3 – +Sales Reps -->
+    <Node ToolID="22">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Join.Join">
+        <Position x="1026" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <JoinInfo side="Left"><Field field="SalesRepID"/></JoinInfo>
+          <JoinInfo side="Right"><Field field="SalesRepID"/></JoinInfo>
+          <SelectConfiguration>
+            <SelectFields>
+              <SelectField field="Left_*"           selected="True"/>
+              <SelectField field="Right_SalesRepID" selected="False"/>
+              <SelectField field="RepName"          selected="True"/>
+              <SelectField field="Territory"        selected="True"/>
+              <SelectField field="CommissionRate"   selected="True"/>
+              <SelectField field="YTDQuota"         selected="True"/>
+              <SelectField field="BaseSalary"       selected="False"/>
+              <SelectField field="Manager"          selected="False"/>
+              <SelectField field="HireDate"         selected="False"/>
+            </SelectFields>
+          </SelectConfiguration>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Join 3: + Sales Rep Dimension</Name>
+          <DefaultAnnotationText>LEFT JOIN on SalesRepID&#xA;Adds: RepName, Territory, CommissionRate, YTDQuota</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxJoin"/>
+    </Node>
+
+    <!-- Tool 23: Join 4 – +Regional Targets (multi-key: Region + Quarter) -->
+    <Node ToolID="23">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Join.Join">
+        <Position x="1188" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <JoinInfo side="Left">
+            <Field field="Region"/>
+            <Field field="Quarter"/>
+          </JoinInfo>
+          <JoinInfo side="Right">
+            <Field field="Region"/>
+            <Field field="Quarter"/>
+          </JoinInfo>
+          <SelectConfiguration>
+            <SelectFields>
+              <SelectField field="Left_*"            selected="True"/>
+              <SelectField field="Right_Region"      selected="False"/>
+              <SelectField field="Right_Quarter"     selected="False"/>
+              <SelectField field="Right_Year"        selected="False"/>
+              <SelectField field="RevenueTarget"     selected="True"/>
+              <SelectField field="UnitTarget"        selected="True"/>
+              <SelectField field="RetentionTarget"   selected="True"/>
+            </SelectFields>
+          </SelectConfiguration>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Join 4: + Regional Targets</Name>
+          <DefaultAnnotationText>LEFT JOIN on Region + Quarter (composite key)&#xA;Adds: RevenueTarget, UnitTarget, RetentionTarget</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxJoin"/>
+    </Node>
+
+
+    <!-- ╔══════════════════════════════════════════╗ -->
+    <!-- ║   LAYER 4: FORMULA ENRICHMENT           ║ -->
+    <!-- ╚══════════════════════════════════════════╝ -->
+
+    <!-- Tool 30: Formula – KPI derivation block -->
+    <Node ToolID="30">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="1350" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <FormulaFields>
+            <!-- Cost of goods for this transaction -->
+            <FormulaField expression="ROUND([CostPrice] * [Quantity], 2)" field="COGS" size="8" type="Double"/>
+            <!-- Gross margin -->
+            <FormulaField expression="ROUND([NetRevenue] - [COGS], 2)" field="GrossMargin" size="8" type="Double"/>
+            <!-- Margin % -->
+            <FormulaField expression="ROUND(IIF([NetRevenue]&gt;0, ([GrossRevenue]-[COGS])/[GrossRevenue]*100, 0), 1)" field="MarginPct" size="8" type="Double"/>
+            <!-- Deal Tier based on NetRevenue -->
+            <FormulaField expression="IIF([NetRevenue]&gt;=2000,'Platinum',&#xA;  IIF([NetRevenue]&gt;=800,'Gold',&#xA;    IIF([NetRevenue]&gt;=300,'Silver','Bronze')))" field="DealTier" size="10" type="String"/>
+            <!-- Revenue per unit -->
+            <FormulaField expression="ROUND(IIF([Quantity]&gt;0,[NetRevenue]/[Quantity],0),2)" field="RevenuePerUnit" size="8" type="Double"/>
+            <!-- % of regional daily target (approx 90 selling days/quarter) -->
+            <FormulaField expression="ROUND(IIF([RevenueTarget]&gt;0, [NetRevenue]/([RevenueTarget]/90)*100, 0), 1)" field="PctDailyTarget" size="8" type="Double"/>
+            <!-- Discount tier label -->
+            <FormulaField expression="IIF([DiscountRate]&gt;=0.15,'Heavy Discount',&#xA;  IIF([DiscountRate]&gt;=0.05,'Standard Discount','No Discount'))" field="DiscountTier" size="25" type="String"/>
+            <!-- Payment risk flag -->
+            <FormulaField expression="IIF([PaymentMethod]='Wire Transfer' AND [NetRevenue]&gt;=1000,'Low Risk',&#xA;  IIF([PaymentMethod]='Credit Card','Medium Risk','PayPal Risk'))" field="PaymentRisk" size="15" type="String"/>
+            <!-- Days since account opened -->
+            <FormulaField expression="DateTimeDiff([TransactionDate], DateTimeParse([AccountOpenDate],'%Y-%m-%d'),'days')" field="AccountAgeDays" size="4" type="Int32"/>
+            <!-- Account tier based on credit limit -->
+            <FormulaField expression="IIF([CreditLimit]&gt;=80000,'Strategic',&#xA;  IIF([CreditLimit]&gt;=30000,'Major',&#xA;    IIF([CreditLimit]&gt;=12000,'Standard','Starter')))" field="AccountTier" size="15" type="String"/>
+          </FormulaFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Formula: KPI Enrichment Block</Name>
+          <DefaultAnnotationText>Derives: COGS, GrossMargin, MarginPct, DealTier,&#xA;RevenuePerUnit, PctDailyTarget, DiscountTier,&#xA;PaymentRisk, AccountAgeDays, AccountTier</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxFormula"/>
+    </Node>
+
+
+    <!-- ╔══════════════════════════════════════════╗ -->
+    <!-- ║   LAYER 5: MACRO – COMMISSION CALC     ║ -->
+    <!-- ╚══════════════════════════════════════════╝ -->
+
+    <!-- Tool 40: Macro – CommissionCalculator -->
+    <Node ToolID="40">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.RunMacro.RunMacro">
+        <Position x="1512" y="108"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <MacroFileName>.\macros\CommissionCalculator.yxmc</MacroFileName>
+          <InputConnections>
+            <Connection name="Input" fieldmap="NetRevenue:NetRevenue,CommissionRate:CommissionRate,ReturnFlag:ReturnFlag,DealTier:DealTier"/>
+          </InputConnections>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>MACRO: Commission Calculator v2.0</Name>
+          <DefaultAnnotationText>Tiered commission with return penalty&#xA;Outputs: BaseCommission, TierMultiplier, FinalCommission, CommissionBand</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="RunMacro"/>
+    </Node>
+
+    <!-- Tool 41: ReturnFlag injector (add ReturnFlag=N back for macro) -->
+    <Node ToolID="41">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="1440" y="54"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <FormulaFields>
+            <FormulaField expression="'N'" field="ReturnFlag" size="1" type="String"/>
+          </FormulaFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Formula: Re-add ReturnFlag=N</Name>
+          <DefaultAnnotationText>All records here are valid sales (N)&#xA;Needed as macro input field</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxFormula"/>
+    </Node>
+
+
+    <!-- ╔══════════════════════════════════════════════╗ -->
+    <!-- ║   LAYER 6: AGGREGATION (4 SUMMARIZE NODES) ║ -->
+    <!-- ╚══════════════════════════════════════════════╝ -->
+
+    <!-- Tool 50: Summarize A – Customer KPIs -->
+    <Node ToolID="50">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Summarize.Summarize">
+        <Position x="1674" y="54"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <SummarizeFields>
+            <SummarizeField field="CustomerID"     action="GroupBy"/>
+            <SummarizeField field="CustomerName"   action="GroupBy"/>
+            <SummarizeField field="Segment"        action="GroupBy"/>
+            <SummarizeField field="Region"         action="GroupBy"/>
+            <SummarizeField field="AccountTier"    action="GroupBy"/>
+            <SummarizeField field="TransactionID"  action="Count"   rename="TotalOrders"/>
+            <SummarizeField field="NetRevenue"     action="Sum"     rename="TotalRevenue"  size="8" type="Double"/>
+            <SummarizeField field="GrossRevenue"   action="Sum"     rename="TotalGross"    size="8" type="Double"/>
+            <SummarizeField field="GrossMargin"    action="Sum"     rename="TotalMargin"   size="8" type="Double"/>
+            <SummarizeField field="COGS"           action="Sum"     rename="TotalCOGS"     size="8" type="Double"/>
+            <SummarizeField field="Quantity"       action="Sum"     rename="TotalUnits"/>
+            <SummarizeField field="NetRevenue"     action="Avg"     rename="AvgOrderValue" size="8" type="Double"/>
+            <SummarizeField field="NetRevenue"     action="Max"     rename="MaxOrderValue" size="8" type="Double"/>
+            <SummarizeField field="FinalCommission"action="Sum"     rename="TotalCommission" size="8" type="Double"/>
+            <SummarizeField field="TransactionDate"action="Max"     rename="LastOrderDate"/>
+            <SummarizeField field="TransactionDate"action="Min"     rename="FirstOrderDate"/>
+          </SummarizeFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Summarize A: Customer KPIs</Name>
+          <DefaultAnnotationText>GroupBy: CustomerID, Name, Segment, Region, AccountTier&#xA;Metrics: TotalOrders, TotalRevenue, AvgOrderValue, TotalMargin</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxSummarize"/>
+    </Node>
+
+    <!-- Tool 51: Formula post-aggregation – Customer KPI ratios -->
+    <Node ToolID="51">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="1836" y="54"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <FormulaFields>
+            <FormulaField expression="ROUND(IIF([TotalGross]&gt;0,[TotalMargin]/[TotalGross]*100,0),1)" field="MarginPct" size="8" type="Double"/>
+            <FormulaField expression="ROUND([TotalRevenue]/[TotalOrders],2)" field="AvgOrderValue" size="8" type="Double"/>
+            <FormulaField expression="IIF([TotalRevenue]&gt;=10000,'VIP',&#xA;  IIF([TotalRevenue]&gt;=5000,'High Value',&#xA;    IIF([TotalRevenue]&gt;=2000,'Growth','Emerging')))" field="CustomerValueBand" size="15" type="String"/>
+          </FormulaFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Formula: Customer Value Band</Name>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxFormula"/>
+    </Node>
+
+    <!-- Tool 52: Summarize B – Product Performance -->
+    <Node ToolID="52">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Summarize.Summarize">
+        <Position x="1674" y="162"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <SummarizeFields>
+            <SummarizeField field="ProductID"      action="GroupBy"/>
+            <SummarizeField field="ProductName"    action="GroupBy"/>
+            <SummarizeField field="Category"       action="GroupBy"/>
+            <SummarizeField field="SubCategory"    action="GroupBy"/>
+            <SummarizeField field="Brand"          action="GroupBy"/>
+            <SummarizeField field="MSRP"           action="GroupBy"/>
+            <SummarizeField field="CostPrice"      action="GroupBy"/>
+            <SummarizeField field="WarrantyMonths" action="GroupBy"/>
+            <SummarizeField field="TransactionID"  action="Count"   rename="TotalOrders"/>
+            <SummarizeField field="Quantity"       action="Sum"     rename="TotalUnitsSold"/>
+            <SummarizeField field="NetRevenue"     action="Sum"     rename="TotalRevenue"  size="8" type="Double"/>
+            <SummarizeField field="GrossMargin"    action="Sum"     rename="TotalMargin"   size="8" type="Double"/>
+            <SummarizeField field="DiscountAmount" action="Sum"     rename="TotalDiscount" size="8" type="Double"/>
+            <SummarizeField field="NetRevenue"     action="Avg"     rename="AvgSalePrice"  size="8" type="Double"/>
+            <SummarizeField field="CustomerID"     action="CountDistinct" rename="UniqueCustomers"/>
+          </SummarizeFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Summarize B: Product Performance</Name>
+          <DefaultAnnotationText>GroupBy: ProductID, Name, Category&#xA;Metrics: TotalUnitsSold, TotalRevenue, UniqueCustomers</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxSummarize"/>
+    </Node>
+
+    <!-- Tool 53: Summarize C – Rep Performance -->
+    <Node ToolID="53">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Summarize.Summarize">
+        <Position x="1674" y="270"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <SummarizeFields>
+            <SummarizeField field="SalesRepID"     action="GroupBy"/>
+            <SummarizeField field="RepName"        action="GroupBy"/>
+            <SummarizeField field="Territory"      action="GroupBy"/>
+            <SummarizeField field="Region"         action="GroupBy"/>
+            <SummarizeField field="CommissionRate" action="GroupBy"/>
+            <SummarizeField field="YTDQuota"       action="GroupBy"/>
+            <SummarizeField field="TransactionID"  action="Count"   rename="TotalDeals"/>
+            <SummarizeField field="NetRevenue"     action="Sum"     rename="TotalRevenue"    size="8" type="Double"/>
+            <SummarizeField field="GrossMargin"    action="Sum"     rename="TotalMargin"     size="8" type="Double"/>
+            <SummarizeField field="FinalCommission"action="Sum"     rename="TotalCommission" size="8" type="Double"/>
+            <SummarizeField field="Quantity"       action="Sum"     rename="TotalUnitsSold"/>
+            <SummarizeField field="CustomerID"     action="CountDistinct" rename="UniqueAccounts"/>
+            <SummarizeField field="NetRevenue"     action="Max"     rename="LargestDeal"   size="8" type="Double"/>
+            <SummarizeField field="DealTier"       action="Mode"    rename="MostCommonTier"/>
+          </SummarizeFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Summarize C: Rep Performance</Name>
+          <DefaultAnnotationText>GroupBy: RepID, Name, Territory&#xA;Metrics: TotalDeals, TotalRevenue, TotalCommission, QuotaAttainment</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxSummarize"/>
+    </Node>
+
+    <!-- Tool 54: Formula – Rep Quota Attainment -->
+    <Node ToolID="54">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="1836" y="270"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <FormulaFields>
+            <FormulaField expression="ROUND(IIF([YTDQuota]&gt;0,[TotalRevenue]/[YTDQuota]*100,0),1)" field="QuotaAttainmentPct" size="8" type="Double"/>
+            <FormulaField expression="IIF([QuotaAttainmentPct]&gt;=100,'Overachiever',&#xA;  IIF([QuotaAttainmentPct]&gt;=80,'On Track',&#xA;    IIF([QuotaAttainmentPct]&gt;=60,'At Risk','Underperforming')))" field="PerformanceBand" size="20" type="String"/>
+            <FormulaField expression="ROUND([TotalRevenue]/[TotalDeals],2)" field="AvgDealSize" size="8" type="Double"/>
+          </FormulaFields>
+        </Configuration>
+        <Annotation DisplayMode="0"><Name>Formula: Quota Attainment %</Name></Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxFormula"/>
+    </Node>
+
+    <!-- Tool 55: Summarize D – Regional Dashboard -->
+    <Node ToolID="55">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Summarize.Summarize">
+        <Position x="1674" y="378"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <SummarizeFields>
+            <SummarizeField field="Region"         action="GroupBy"/>
+            <SummarizeField field="Quarter"        action="GroupBy"/>
+            <SummarizeField field="RevenueTarget"  action="GroupBy"/>
+            <SummarizeField field="UnitTarget"     action="GroupBy"/>
+            <SummarizeField field="TransactionID"  action="Count"   rename="TotalTransactions"/>
+            <SummarizeField field="NetRevenue"     action="Sum"     rename="ActualRevenue"    size="8" type="Double"/>
+            <SummarizeField field="GrossMargin"    action="Sum"     rename="ActualMargin"     size="8" type="Double"/>
+            <SummarizeField field="Quantity"       action="Sum"     rename="ActualUnits"/>
+            <SummarizeField field="FinalCommission"action="Sum"     rename="TotalCommission"  size="8" type="Double"/>
+            <SummarizeField field="CustomerID"     action="CountDistinct" rename="ActiveAccounts"/>
+            <SummarizeField field="NetRevenue"     action="Avg"     rename="AvgTransactionValue" size="8" type="Double"/>
+          </SummarizeFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Summarize D: Regional Dashboard</Name>
+          <DefaultAnnotationText>GroupBy: Region + Quarter&#xA;Metrics: ActualRevenue vs Target, Units, Margin, ActiveAccounts</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxSummarize"/>
+    </Node>
+
+    <!-- Tool 56: Formula – Regional Target Gap -->
+    <Node ToolID="56">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="1836" y="378"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <FormulaFields>
+            <FormulaField expression="ROUND(IIF([RevenueTarget]&gt;0,[ActualRevenue]/[RevenueTarget]*100,0),1)" field="RevenueAttainmentPct" size="8" type="Double"/>
+            <FormulaField expression="ROUND([ActualRevenue]-[RevenueTarget],2)" field="RevenueGap" size="8" type="Double"/>
+            <FormulaField expression="IIF([RevenueAttainmentPct]&gt;=100,'Target Met',&#xA;  IIF([RevenueAttainmentPct]&gt;=80,'Close to Target','Off Track'))" field="TargetStatus" size="20" type="String"/>
+            <FormulaField expression="ROUND(IIF([ActualRevenue]&gt;0,[ActualMargin]/[ActualRevenue]*100,0),1)" field="MarginPct" size="8" type="Double"/>
+          </FormulaFields>
+        </Configuration>
+        <Annotation DisplayMode="0"><Name>Formula: Target Gap Analysis</Name></Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxFormula"/>
+    </Node>
+
+
+    <!-- ╔══════════════════════════════════════╗ -->
+    <!-- ║    LAYER 7: OUTPUTS                 ║ -->
+    <!-- ╚══════════════════════════════════════╝ -->
+
+    <!-- Tool 60: Output – Customer KPI Report -->
+    <Node ToolID="60">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput">
+        <Position x="1998" y="54"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File>.\output\customer_kpi_report.csv</File>
+          <FormatSpecificOptions>
+            <FirstRowData>False</FirstRowData>
+            <Separator>,</Separator>
+            <ForceQuotes>False</ForceQuotes>
+            <HeaderRow>True</HeaderRow>
+            <CodePage>28591</CodePage>
+            <WriteBOM>False</WriteBOM>
+            <LineEnd>CRLF</LineEnd>
+          </FormatSpecificOptions>
+          <MultiFile>False</MultiFile>
+          <FileSyncMode>0</FileSyncMode>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Output 1: customer_kpi_report.csv</Name>
+          <DefaultAnnotationText>20 rows | Customer revenue, margin, order stats, value band</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxDbFileOutput"/>
+    </Node>
+
+    <!-- Tool 61: Output – Product Performance -->
+    <Node ToolID="61">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput">
+        <Position x="1998" y="162"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File>.\output\product_performance.csv</File>
+          <FormatSpecificOptions>
+            <HeaderRow>True</HeaderRow>
+            <Separator>,</Separator>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Output 2: product_performance.csv</Name>
+          <DefaultAnnotationText>10 rows | Units sold, revenue, margin per product</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxDbFileOutput"/>
+    </Node>
+
+    <!-- Tool 62: Output – Rep Commission Report -->
+    <Node ToolID="62">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput">
+        <Position x="1998" y="270"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File>.\output\rep_commission_report.csv</File>
+          <FormatSpecificOptions>
+            <HeaderRow>True</HeaderRow>
+            <Separator>,</Separator>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Output 3: rep_commission_report.csv</Name>
+          <DefaultAnnotationText>5 rows | Rep deals, revenue, commission, quota attainment</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxDbFileOutput"/>
+    </Node>
+
+    <!-- Tool 63: Output – Regional Dashboard -->
+    <Node ToolID="63">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput">
+        <Position x="1998" y="378"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File>.\output\regional_dashboard.csv</File>
+          <FormatSpecificOptions>
+            <HeaderRow>True</HeaderRow>
+            <Separator>,</Separator>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Output 4: regional_dashboard.csv</Name>
+          <DefaultAnnotationText>8 rows | Region × Quarter: actual vs target, gap analysis</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxDbFileOutput"/>
+    </Node>
+
+    <!-- Tool 64: Output – Returned Orders (False stream from Filter) -->
+    <Node ToolID="64">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput">
+        <Position x="216" y="162"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File>.\output\returned_orders_flagged.csv</File>
+          <FormatSpecificOptions>
+            <HeaderRow>True</HeaderRow>
+            <Separator>,</Separator>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Output 5: returned_orders_flagged.csv</Name>
+          <DefaultAnnotationText>3 rows | Returned/flagged transactions for review</DefaultAnnotationText>
+        </Annotation>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePlugins.dll" EngineDllEntryPoint="AlteryxDbFileOutput"/>
+    </Node>
+
+  </Nodes>
+
+
+  <!-- ═══════════════════════════════════════════════ -->
+  <!--              CONNECTIONS                        -->
+  <!-- ═══════════════════════════════════════════════ -->
+  <Connections>
+    <!-- Input → Filter -->
+    <Connection><Origin ToolID="1" Connection="Output"/><Destination ToolID="10" Connection="Input"/></Connection>
+    <!-- Filter FALSE → returned_orders output -->
+    <Connection><Origin ToolID="10" Connection="False"/><Destination ToolID="64" Connection="Input"/></Connection>
+    <!-- Filter TRUE → Formula date parse -->
+    <Connection><Origin ToolID="10" Connection="True"/><Destination ToolID="11" Connection="Input"/></Connection>
+    <!-- Formula → Select clean -->
+    <Connection><Origin ToolID="11" Connection="Output"/><Destination ToolID="12" Connection="Input"/></Connection>
+
+    <!-- Join 1: Transactions (L) + Customers (R) -->
+    <Connection><Origin ToolID="12" Connection="Output"/><Destination ToolID="20" Connection="Left"/></Connection>
+    <Connection><Origin ToolID="2"  Connection="Output"/><Destination ToolID="20" Connection="Right"/></Connection>
+    <!-- Join 2: +Products -->
+    <Connection><Origin ToolID="20" Connection="Join"/><Destination ToolID="21" Connection="Left"/></Connection>
+    <Connection><Origin ToolID="3"  Connection="Output"/><Destination ToolID="21" Connection="Right"/></Connection>
+    <!-- Join 3: +Reps -->
+    <Connection><Origin ToolID="21" Connection="Join"/><Destination ToolID="22" Connection="Left"/></Connection>
+    <Connection><Origin ToolID="4"  Connection="Output"/><Destination ToolID="22" Connection="Right"/></Connection>
+    <!-- Join 4: +Regional Targets -->
+    <Connection><Origin ToolID="22" Connection="Join"/><Destination ToolID="23" Connection="Left"/></Connection>
+    <Connection><Origin ToolID="5"  Connection="Output"/><Destination ToolID="23" Connection="Right"/></Connection>
+
+    <!-- Formula KPI enrichment -->
+    <Connection><Origin ToolID="23" Connection="Join"/><Destination ToolID="30" Connection="Input"/></Connection>
+
+    <!-- Add ReturnFlag for macro -->
+    <Connection><Origin ToolID="30" Connection="Output"/><Destination ToolID="41" Connection="Input"/></Connection>
+    <!-- Macro: Commission Calculator -->
+    <Connection><Origin ToolID="41" Connection="Output"/><Destination ToolID="40" Connection="Input"/></Connection>
+
+    <!-- Fan-out to all 4 Summarize nodes -->
+    <Connection><Origin ToolID="40" Connection="Output"/><Destination ToolID="50" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="40" Connection="Output"/><Destination ToolID="52" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="40" Connection="Output"/><Destination ToolID="53" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="40" Connection="Output"/><Destination ToolID="55" Connection="Input"/></Connection>
+
+    <!-- Post-agg formulas -->
+    <Connection><Origin ToolID="50" Connection="Output"/><Destination ToolID="51" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="53" Connection="Output"/><Destination ToolID="54" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="55" Connection="Output"/><Destination ToolID="56" Connection="Input"/></Connection>
+
+    <!-- Outputs -->
+    <Connection><Origin ToolID="51" Connection="Output"/><Destination ToolID="60" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="52" Connection="Output"/><Destination ToolID="61" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="54" Connection="Output"/><Destination ToolID="62" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="56" Connection="Output"/><Destination ToolID="63" Connection="Input"/></Connection>
+  </Connections>
+
+
+  <Properties>
+    <Memory default="512"/>
+    <GlobalRecordLimit value="0"/>
+    <TempFiles default="False"/>
+    <GlobalSortLimit value="0"/>
+    <MetaInfo>
+      <n>Enterprise_Sales_Commission_Pipeline</n>
+      <description>Complex multi-input sales and commission analytics workflow.
+5 inputs (60 transactions + 4 dimension tables).
+Star-schema joins, formula enrichment, commission macro, 4-stream aggregation.
+Outputs: Customer KPIs, Product Performance, Rep Commission, Regional Dashboard, Returns log.
+      </description>
+      <author>Sales Analytics Team</author>
+      <version>3.0</version>
+      <lastSavedAlteryxVersion>2024.1.0</lastSavedAlteryxVersion>
+    </MetaInfo>
+  </Properties>
+
+</AlteryxDocument>
