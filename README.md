@@ -1,5 +1,8 @@
 # AlteryxMigration — Alteryx to Databricks
 
+<img width="1722" height="1144" alt="image" src="https://github.com/user-attachments/assets/fd1670aa-6d88-4d72-b0da-e8dedf5db1ab" />
+
+
 Migration of Alteryx workflows to Databricks PySpark notebooks using Unity Catalog for storage and Delta Lake for output tables.
 
 ---
