@@ -3,6 +3,25 @@
 # MAGIC # transform — Generic DataFrame Transformation Utilities
 # MAGIC Shared helper library for all Alteryx-converted notebooks.
 # MAGIC Use via `%run ./transform` at the top of any notebook.
+# MAGIC
+# MAGIC ---
+# MAGIC ## Alteryx macro → PySpark (this module)
+# MAGIC
+# MAGIC Source workflow: **`Rootbeer Alteryx Project.yxmd`**. External `.yxmc` files are not in the repo; functions below implement or approximate Designer behavior. Each function’s Python docstring lists **input columns** and **output columns / shape**.
+# MAGIC
+# MAGIC | Alteryx macro / tool | PySpark function | Data captured (output) |
+# MAGIC |---|---|---|
+# MAGIC | **Imputation_v3.yxmc** | `macro_imputation_v3_fill_null` | Same schema; nulls in target numeric column replaced with constant (default `0`). |
+# MAGIC | **Multi-field formula (Tool 75)** | `macro_multi_field_formula_brand_urls` | `website`, `facebookpage`, `twitter` filled with Google search URL when null/blank; uses `brandname`. |
+# MAGIC | **Cleanse.yxmc** | `macro_cleanse_review_text` | `description` (or chosen col): trim + collapse whitespace. |
+# MAGIC | **Alteryx_Batch_Macro_Final.yxmc** + control summarize | `distinct_creditcardtypes_for_batch_macro`, `macro_batch_summarize_revenue_profit`, `batch_macro_creditcard_revenue_profit_from_volume`, `add_placeholder_profit` | Per `creditcardtype`: **`Revenue`** = sum(`purchaseprice`), **`Sum_Profit`** = sum(`Profit`); `Profit` from placeholder `purchaseprice - unit_cost` if no cost column. |
+# MAGIC | **Alteryx_Maven_Standard_Macro_Final.yxmc** + **State Names.xlsx** | `standard_macro_maven_join`, `state_names_dataframe` | Customers ⋉ reviews on `customerid`; `state` expanded from abbreviation to full **Name** when matched. |
+# MAGIC | **WeightedAvg.yxmc** | `macro_weighted_average` | One row per group: **`Weighted Average`** = Σ(value×weight)/Σ(weight). |
+# MAGIC | **SelectRecords.yxmc** | `macro_select_records_row_ranges` | Subset of rows by global 1-based row index after sort (e.g. `1–10` and `30+`). |
+# MAGIC | **DateTimeNow** / **DTNEngine.yxmc** | `macro_datetime_now_column` | New column: current date (or formatted string). |
+# MAGIC | **Legend_Splitter.yxmc**, **Legend_Builder.yxmc**, **ReportHeader** (`RHEngine.yxmc`), **FooterMacro.yxmc** | *No DataFrame API* | Portfolio map/report chrome only in Designer; recreate in Databricks SQL/Dashboards. |
+# MAGIC
+# MAGIC **Pipelines composing native tools + macros:** `prepare_rootbeer_transactions`, `add_transaction_time_features`, `add_days_since_last_purchase`, `build_rootbeer_enriched_transactions` (Select, Auto Field, Formula, Sort, Multi Row Formula, Joins, Union pattern, optional brand join, **Time on Shelf**). **`read_google_rootbeer_union`** matches **Input Data** `google*.csv`.
 
 # COMMAND ----------
 
@@ -206,6 +225,7 @@ def preview(df: DataFrame, n: int = 10, label: str = "") -> DataFrame:
 # ---------------------------------------------------------------------------
 # Alteryx macro parity — Rootbeer-Alteryx-Project (see Rootbeer Alteryx Project.yxmd)
 # External .yxmc files are not in repo; logic is inferred from workflow metadata.
+# See notebook MAGIC markdown above for the full macro ↔ PySpark matrix.
 # ---------------------------------------------------------------------------
 
 # State Names.xlsx equivalent (Name, Abbreviation) for FindReplace / Standard Macro path
@@ -222,7 +242,11 @@ _US_STATES = (
 
 
 def state_names_dataframe(spark) -> DataFrame:
-    """Mirror State Names.xlsx: columns Name, Abbreviation."""
+    """Mirror **State Names.xlsx** (`Sheet1$`): US state full name and USPS abbreviation.
+
+    **Output columns:** `Name` (string), `Abbreviation` (string).
+    **Row count:** 51 (includes DC).
+    """
     rows = [p.split(",") for p in _US_STATES.split(";") if p.strip()]
     return spark.createDataFrame(rows, ["Name", "Abbreviation"])
 
@@ -232,7 +256,11 @@ def macro_imputation_v3_fill_null(
     column: str,
     with_value: Union[int, float] = 0,
 ) -> DataFrame:
-    """Imputation_v3.yxmc: replace nulls in a numeric column with a constant (workflow used 0)."""
+    """**Imputation_v3.yxmc** — null numeric imputation (Designer used user-specified replace).
+
+    **Input:** any columns; requires `column` present (numeric or nullable int).
+    **Output:** same schema; `column` = `coalesce(column, with_value)` (default `0` for **Days Since Last Purchase**).
+    """
     return df.withColumn(column, F.coalesce(F.col(column), F.lit(with_value)))
 
 
@@ -241,7 +269,11 @@ def macro_multi_field_formula_brand_urls(
     brandname_col: str = "brandname",
     url_fields: tuple = ("website", "facebookpage", "twitter"),
 ) -> DataFrame:
-    """Multi-field formula on brand data: null URL -> Google search for brandname (ToolID 75)."""
+    """**Multi-field Formula** (ToolID 75): if URL field null/empty → `http://www.google.com/search?q=` + brand.
+
+    **Input columns:** `brandname` (required for substitution); each of `url_fields` if present.
+    **Output:** same rows; updated `website`, `facebookpage`, `twitter` where applicable.
+    """
     google = F.concat(F.lit("http://www.google.com/search?q="), F.col(brandname_col))
     out = df
     for c in url_fields:
@@ -254,14 +286,22 @@ def macro_multi_field_formula_brand_urls(
 
 
 def macro_cleanse_review_text(df: DataFrame, description_col: str = "description") -> DataFrame:
-    """Cleanse.yxmc (approximation): trim and normalize whitespace on text fields present."""
+    """**Cleanse.yxmc** (approximation) — Designer cleanse often trims and normalizes text.
+
+    **Input / output:** single column `description_col` (default `description`); unchanged if column missing.
+    **Transform:** trim; collapse internal whitespace runs to single space.
+    """
     if description_col not in df.columns:
         return df
     return df.withColumn(description_col, F.trim(F.regexp_replace(F.col(description_col), r"\s+", " ")))
 
 
 def distinct_creditcardtypes_for_batch_macro(transactions: DataFrame) -> DataFrame:
-    """Control stream for Alteryx_Batch_Macro_Final: distinct creditcardtype (Summarize ToolID 170)."""
+    """**Batch macro control** — same as Summarize ToolID 170: distinct `creditcardtype`.
+
+    **Input:** raw or typed transactions with `creditcardtype`.
+    **Output columns:** `creditcardtype` only; one row per distinct non-null type.
+    """
     return transactions.select("creditcardtype").distinct().filter(F.col("creditcardtype").isNotNull())
 
 
@@ -269,10 +309,11 @@ def macro_batch_summarize_revenue_profit(
     transactions: DataFrame,
     profit_col: str = "Profit",
 ) -> DataFrame:
-    """Alteryx_Batch_Macro_Final.yxmc output shape: creditcardtype, Revenue, Sum_Profit.
+    """**Alteryx_Batch_Macro_Final.yxmc** — for each batch key `creditcardtype`, sum revenue and profit.
 
-    Workflow MetaInfo: Revenue = Sum(purchaseprice), Sum_Profit = Sum(Profit).
-    Profit is not in raw CSV; compute before calling (see add_placeholder_profit).
+    **Input columns:** `creditcardtype`, `purchaseprice`, `profit_col` (add via `add_placeholder_profit` if missing).
+    **Output columns:** `creditcardtype`, **`Revenue`** (= sum `purchaseprice`), **`Sum_Profit`** (= sum `Profit`).
+    **Grain:** one row per credit card type.
     """
     if profit_col not in transactions.columns:
         raise ValueError(f"Missing {profit_col}; join costs or run add_placeholder_profit() first.")
@@ -289,7 +330,11 @@ def add_placeholder_profit(
     purchase_col: str = "purchaseprice",
     unit_cost: float = 1.0,
 ) -> DataFrame:
-    """When wholesale cost is unavailable, Profit = purchaseprice - unit_cost (batch macro input)."""
+    """Adds **Profit** when wholesale cost from **rootbeerbrand** is not joined (batch macro prerequisite).
+
+    **Input:** `purchase_col` (default `purchaseprice`).
+    **Output:** new column **`Profit`** = `cast(purchase_col AS double) - unit_cost` (default cost `1.0`; override when you have real COGS).
+    """
     p = F.col(purchase_col).cast("double")
     return df.withColumn("Profit", p - F.lit(unit_cost))
 
@@ -300,10 +345,11 @@ def standard_macro_maven_join(
     states: Optional[DataFrame] = None,
     spark=None,
 ) -> DataFrame:
-    """Alteryx_Maven_Standard_Macro_Final.yxmc (approximation).
+    """**Alteryx_Maven_Standard_Macro_Final.yxmc** (approximation) + **Find Replace** state names.
 
-    Workflow feeds Customers, Reviews, States. Implement as customers left join reviews on customerid,
-    then map state abbreviation -> full Name using state lookup (FindReplace equivalent).
+    **Input columns:** customers/reviews share `customerid`; customers include `state` (USPS abbrev).
+    **Optional:** `states` DataFrame (`Name`, `Abbreviation`) or pass `spark` to use `state_names_dataframe`.
+    **Output:** left join customers ⋉ reviews (one row per customer–review pair); `state` coalesced to full **Name** when abbrev matches.
     """
     if states is None:
         if spark is None:
@@ -324,8 +370,85 @@ def standard_macro_maven_join(
     )
 
 
+def macro_weighted_average(
+    df: DataFrame,
+    value_col: str,
+    weight_col: str,
+    group_cols: Union[str, list],
+    output_alias: str = "Weighted Average",
+) -> DataFrame:
+    """**WeightedAvg.yxmc** — weighted mean Σ(value×weight)/Σ(weight) per group (workflow: value=`starrating`, weight=`Length`, group=`brandname`).
+
+    **Input columns:** `value_col`, `weight_col`, plus all `group_cols`.
+    **Output columns:** group key columns + **`output_alias`** (double); null if Σ(weight)=0 or null.
+    """
+    if isinstance(group_cols, str):
+        group_cols = [group_cols]
+    v = F.col(value_col).cast("double")
+    w = F.col(weight_col).cast("double")
+    agg = df.groupBy(*[F.col(c) for c in group_cols]).agg(
+        F.sum(v * w).alias("_w_num"),
+        F.sum(w).alias("_w_den"),
+    )
+    return agg.withColumn(
+        output_alias,
+        F.when(F.col("_w_den").isNull() | (F.col("_w_den") == 0), F.lit(None).cast("double")).otherwise(
+            F.col("_w_num") / F.col("_w_den")
+        ),
+    ).drop("_w_num", "_w_den")
+
+
+def macro_select_records_row_ranges(
+    df: DataFrame,
+    ranges: list,
+    order_cols: Optional[list] = None,
+) -> DataFrame:
+    """**SelectRecords.yxmc** (approximation) — keep rows whose global row number falls in given ranges after sort.
+
+    Designer config example: `1-10` and `30+` → `ranges=[(1, 10), (30, None)]`. A one-element tuple `(30,)` is treated as **30+** (same as `(30, None)`).
+
+    **Input:** full DataFrame.
+    **Output:** filtered rows; schema unchanged.
+    """
+    if order_cols is None:
+        order_cols = [df.columns[0]]
+    w = Window.orderBy(*[F.col(c) for c in order_cols])
+    rn = F.row_number().over(w)
+    cond = None
+    if not ranges:
+        return df
+    for spec in ranges:
+        if len(spec) == 1:
+            low, high = spec[0], None
+        else:
+            low, high = spec[0], spec[1]
+        part = (rn >= low) if high is None else ((rn >= low) & (rn <= high))
+        cond = part if cond is None else (cond | part)
+    return df.filter(cond)
+
+
+def macro_datetime_now_column(
+    df: DataFrame,
+    column_name: str = "As_Of_Date",
+    as_string: bool = False,
+    format_str: str = "MM-dd-yyyy",
+) -> DataFrame:
+    """**DateTimeNow** / **DTNEngine.yxmc** — append run timestamp as date column (Designer used MM-dd-yyyy text).
+
+    **Input:** any DataFrame.
+    **Output:** same rows + new column `column_name`: `date` if `as_string=False`, else formatted string from `current_timestamp()`.
+    """
+    if as_string:
+        return df.withColumn(column_name, F.date_format(F.current_timestamp(), format_str))
+    return df.withColumn(column_name, F.to_date(F.current_timestamp()))
+
+
 def prepare_rootbeer_transactions(raw: DataFrame) -> DataFrame:
-    """Tools 60 + 65: rename to Designer labels and cast common types."""
+    """**Select (Tool 60) + Auto Field (Tool 65)** — rename to Designer labels and cast types.
+
+    **Input columns (CSV):** `transactionid`, `creditcardnumber`, `creditcardtype`, `customerid`, `transactiondate`, `locationid`, `rootbeerid`, `purchaseprice`.
+    **Output columns:** **Credit Card Number**, **Credit Card Type**, **Customer ID**, **Location ID**, **Purchase Price**, **Root Beer ID**, **Transaction Date** (date), **Transaction ID**.
+    """
     mapping = {
         "creditcardnumber": "Credit Card Number",
         "creditcardtype": "Credit Card Type",
@@ -356,7 +479,11 @@ def prepare_rootbeer_transactions(raw: DataFrame) -> DataFrame:
 
 
 def add_transaction_time_features(df: DataFrame) -> DataFrame:
-    """Tool 74 Formula: Month (first of month), Month Num, Year."""
+    """**Formula (Tool 74)** — calendar features from **Transaction Date**.
+
+    **Input:** **Transaction Date** (date).
+    **Output columns:** **Month** (timestamp, month start), **Month Num** (string), **Year** (string, calendar year).
+    """
     d = F.col("Transaction Date")
     return (
         df.withColumn("Month", F.date_trunc("month", d))
@@ -366,7 +493,11 @@ def add_transaction_time_features(df: DataFrame) -> DataFrame:
 
 
 def add_days_since_last_purchase(df: DataFrame) -> DataFrame:
-    """Tool 76 Multi-Row Formula grouped by Customer ID."""
+    """**Multi Row Formula (Tool 76)** — days since previous transaction per customer.
+
+    **Input:** **Customer ID**, **Transaction Date** (sorted ascending per customer).
+    **Output column:** **Days Since Last Purchase** (int, null for first row per customer).
+    """
     w = Window.partitionBy("Customer ID").orderBy("Transaction Date")
     prev = F.lag("Transaction Date").over(w)
     return df.withColumn(
@@ -380,8 +511,11 @@ def build_rootbeer_enriched_transactions(
     include_brand_join: bool = False,
     brand_csv_path: Optional[str] = None,
 ) -> DataFrame:
-    """Replays 'Transactions - Transform Data' through Union (86): select, types, time features,
-    lag imputation, join rootbeer, geolocation, left-union pattern as single left join, optional brand.
+    """**Transactions – Transform Data** canvas: enriched fact-level stream through join/union parity.
+
+    **Reads:** `transaction.csv`, `rootbeer.csv`, `geolocation.csv`; optional `brand_csv_path` (e.g. brand export).
+    **Pipeline:** prepare → time features → sort → days since last purchase → **Imputation_v3** on lag column → filter `locationid!=0` on rootbeer branch → join geo → join transactions to rootbeer → left join geo enrichment on **Location ID** → optional brand join + **multi-field URL** macro → **Time on Shelf** = datediff(**Transaction Date**, `purchasedate`).
+    **Output:** transaction grain + rootbeer columns + `geo_latitude`, `geo_longitude`, `geo_location_text`, optional brand fields, **Time on Shelf**.
     """
     tx_path = f"{base_path.rstrip('/')}/transaction.csv"
     rb_path = f"{base_path.rstrip('/')}/rootbeer.csv"
@@ -452,14 +586,20 @@ def build_rootbeer_enriched_transactions(
 
 
 def batch_macro_creditcard_revenue_profit_from_volume(base_path: str) -> DataFrame:
-    """Batch macro output using raw transaction.csv (same stream as Alteryx ToolID 4 -> 226)."""
+    """End-to-end **batch macro** table from Volume: raw **transaction.csv** + placeholder **Profit**.
+
+    **Output:** same as `macro_batch_summarize_revenue_profit` — `creditcardtype`, **Revenue**, **Sum_Profit**.
+    """
     raw = read_csv(f"{base_path.rstrip('/')}/transaction.csv")
     raw = add_placeholder_profit(raw, "purchaseprice", 1.0)
     return macro_batch_summarize_revenue_profit(raw, "Profit")
 
 
 def read_google_rootbeer_union(base_path: str) -> DataFrame:
-    """Input tool google*.csv: union all matching files (same schema)."""
+    """**Input Data** `google_rootbeer_*.csv` — union all year files (Union by name).
+
+    **Output columns:** union of all files (typically **Week**, **rootbeer: (United States)** or similar trend columns).
+    """
     import glob
 
     paths = sorted(glob.glob(f"{base_path.rstrip('/')}/google_rootbeer_*.csv"))
@@ -478,5 +618,6 @@ print("            join_dfs, add_column, rename_cols, cast_cols, select_cols, su
 print("[transform] Rootbeer macros: state_names_dataframe, macro_imputation_v3_fill_null,")
 print("            macro_multi_field_formula_brand_urls, macro_cleanse_review_text,")
 print("            macro_batch_summarize_revenue_profit, batch_macro_creditcard_revenue_profit_from_volume,")
-print("            add_placeholder_profit, standard_macro_maven_join,")
+print("            add_placeholder_profit, standard_macro_maven_join, macro_weighted_average,")
+print("            macro_select_records_row_ranges, macro_datetime_now_column,")
 print("            build_rootbeer_enriched_transactions, read_google_rootbeer_union")
