@@ -1,0 +1,87 @@
+{
+  "pipeline_name": "alteryx_migration_repo_pipeline",
+  "default_timeout_seconds": 7200,
+  "workflows": [
+    {
+      "id": "simple_workflow",
+      "type": "notebook",
+      "path": "simple_workflow",
+      "depends_on": [],
+      "timeout_seconds": 3600,
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "medium_workflow",
+      "type": "notebook",
+      "path": "medium_workflow",
+      "depends_on": [],
+      "timeout_seconds": 3600,
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "complex_workflow",
+      "type": "notebook",
+      "path": "complex_workflow",
+      "depends_on": [],
+      "timeout_seconds": 3600,
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "enterprise_01_ingest_quality",
+      "type": "notebook",
+      "path": "enterprise_01_ingest_quality",
+      "depends_on": [],
+      "timeout_seconds": 3600,
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "enterprise_02_star_schema_enrichment",
+      "type": "notebook",
+      "path": "enterprise_02_star_schema_enrichment",
+      "depends_on": ["enterprise_01_ingest_quality"],
+      "timeout_seconds": 3600,
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "enterprise_03_customer_kpi_report",
+      "type": "notebook",
+      "path": "enterprise_03_customer_kpi_report",
+      "depends_on": ["enterprise_02_star_schema_enrichment"],
+      "timeout_seconds": 3600,
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "enterprise_04_product_performance",
+      "type": "notebook",
+      "path": "enterprise_04_product_performance",
+      "depends_on": ["enterprise_02_star_schema_enrichment"],
+      "timeout_seconds": 3600,
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "enterprise_05_rep_commission_report",
+      "type": "notebook",
+      "path": "enterprise_05_rep_commission_report",
+      "depends_on": ["enterprise_02_star_schema_enrichment"],
+      "timeout_seconds": 3600,
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "enterprise_06_regional_dashboard",
+      "type": "notebook",
+      "path": "enterprise_06_regional_dashboard",
+      "depends_on": ["enterprise_02_star_schema_enrichment"],
+      "timeout_seconds": 3600,
+      "enabled": true,
+      "params": {}
+    }
+  ]
+}
