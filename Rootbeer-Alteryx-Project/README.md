@@ -1,21 +1,31 @@
 # Rootbeer-Alteryx-Project
-In this project, I am importing 9 tables into the Alteryx Designer and subsequently prepare, manipulate, transform and analyse data. This project was a great help in understanding specific nuances of ETL (Extract Transform Load) process
 
-Some of the specific tasks I did:
+This folder contains the **Rootbeer** Alteryx Designer sample migrated to **Databricks** (**PySpark** + **Unity Catalog** + **Delta**).
 
+## What’s here
 
+| Asset | Description |
+|-------|-------------|
+| `Rootbeer Alteryx Project.yxmd` | Original Alteryx workflow (2023.1) |
+| `*.csv` | Source data (transactions, customers, root beer catalog, reviews, geolocation, Google Trends, etc.) |
+| `transform.py` | Shared notebook library: generic helpers + Rootbeer pipeline + macro-style functions + `save_as_uc_table_from_config` |
+| `notebook_00_setup_configuration.ipynb` | Catalog, schemas, table names, ADLS `abfss` settings, Volume paths, `pipeline_config` temp view |
+| `notebook_01_rootbeer_transactions_pipeline.ipynb` | End-to-end loads into bronze/silver/gold and fact/dim tables defined in config |
+| `notebook_02_google_trends_union.ipynb` | Unions `google_rootbeer_*.csv` into configured tables |
 
+## How to run
 
-Import and prepare the company's raw data for analysis
+1. Upload or sync CSVs to the **Volume path** set as `SOURCE_DATA_PATH` in **notebook 00** (see parent repo **`README.md`**).
+2. Run **`notebook_00_setup_configuration.ipynb`**, then **`notebook_01`** / **`notebook_02`**.
 
-Identify and correct data errors
+## Documentation
 
-Join data from multiple sources
+See the repository root **`../README.md`** for full layout, Enterprise pipeline pointers, and ADLS/UC notes.
 
-Calculate new metrics and dimensions
+---
 
-Create data visualizations to analyze the data
+## Original project summary
 
-Generate reports to communicate the findings to stakeholders
+Import and prepare raw data, fix data issues, join sources, derive metrics, visualize, and report. Alteryx Designer was used to explore ETL patterns for this dataset.
 
-![image](https://github.com/nikkimutallim/Rootbeer-Alteryx-Project/assets/116984010/0980e551-5240-4ef5-a392-5cb59550880c)
+![workflow](https://github.com/nikkimutallim/Rootbeer-Alteryx-Project/assets/116984010/0980e551-5240-4ef5-a392-5cb59550880c)
